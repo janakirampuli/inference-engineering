@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+.python-version
+uv.lock
+.claude/
+
+# benchmark outputs
+results/*.json
+results/*.png
