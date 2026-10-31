@@ -1,0 +1,3 @@
+# run a command on a Modal GPU (default L4)
+uv run modal run modal_run.py --cmd "nvidia-smi && nvcc --version"
+uv run modal run modal_run.py --gpu H100 --cmd "..."
