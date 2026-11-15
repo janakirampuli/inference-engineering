@@ -1,6 +1,6 @@
 """Run commands from this folder on a Modal GPU. Invoke from the repo root.
 
-The default GPU is a cheap L4, every run has a timeout (default 10 minutes), and any run whose
+The default GPU is an A100 40GB, every run has a timeout (default 10 minutes), and any run whose
 worst-case cost (running until the timeout) exceeds $2 asks for confirmation.
 
     uv run modal run modal_run.py --cmd "nvidia-smi && nvcc --version"
@@ -67,7 +67,7 @@ def worst_case_cost(gpu_spec: str | None, hours: float) -> float | None:
 
 
 @app.local_entrypoint()
-def main(cmd: str, gpu: str = "L4", timeout: int = DEFAULT_TIMEOUT_SECONDS, yes: bool = False) -> None:
+def main(cmd: str, gpu: str = "A100", timeout: int = DEFAULT_TIMEOUT_SECONDS, yes: bool = False) -> None:
     gpu_spec = None if gpu.lower() in ("", "none", "cpu") else gpu
     cost = worst_case_cost(gpu_spec, timeout / 3600)
     month = float(modal.Workspace.from_context().billing.summary().billed_cost)
