@@ -18,3 +18,4 @@
 | 1. Naive, 16×16 blocks, row from x | 243.39 | 0.56 | 2.9% | 3.0% |
 | 1. Naive, 32×32 blocks, row from x | 470.95 | 0.29 | 1.5% | 1.5% |
 | 2. Coalesced, 32×32 blocks, column from x | 45.22 | 3.04 | 15.6% | 16.0% |
+| 3. Shared memory tiles, 32×32 blocks and tiles | 25.82 | 5.32 | 27.3% | 28.0% |
