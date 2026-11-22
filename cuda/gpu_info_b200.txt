@@ -1,4 +1,4 @@
-$ nvcc -O3 -arch=sm_80 cuda/gpu_info.cu -o gpu_info && ./gpu_info
+$ nvcc -O3 -arch=sm_100 cuda/gpu_info.cu -o gpu_info && ./gpu_info
 Detected 1 CUDA device(s)
 
 ====================================================
@@ -6,38 +6,38 @@ DEVICE 0
 ====================================================
 
 ================ BASIC DEVICE INFO ================
-Name                       : NVIDIA A100-SXM4-40GB
-Compute Capability         : 8.0
+Name                       : NVIDIA B200
+Compute Capability         : 10.0
 
 [Execution]
-Multiprocessors (SMs)      : 108
-SM clock (max)             : 1410 MHz
+Multiprocessors (SMs)      : 148
+SM clock (max)             : 1965 MHz
 Warp Size                  : 32
 Max threads per block      : 1024
 Max threads dim            : 1024 x 1024 x 64
 Max grid size              : 2147483647 x 65535 x 65535
 
 [Memory]
-Total global memory        : 42.43 GB
+Total global memory        : 191.51 GB
 Shared memory per block    : 48.00 KB
 Registers per block        : 65536
-L2 Cache Size              : 40.00 MB
-Memory clock rate          : 1215.00 MHz
-Memory bus width           : 5120 bits
-Async copy engines         : 3
+L2 Cache Size              : 126.50 MB
+Memory clock rate          : 3996.00 MHz
+Memory bus width           : 7680 bits
+Async copy engines         : 4
 
 ============== LOW-LEVEL ARCHITECTURE ==============
 Max threads per SM             : 2048
 Max blocks per SM              : 32
 Max warps per SM               : 64
 Registers per SM               : 65536
-Shared mem per SM              : 164.00 KB
-Shared mem per block (opt-in)  : 163.00 KB
+Shared mem per SM              : 228.00 KB
+Shared mem per block (opt-in)  : 227.00 KB
 Runtime shared mem overhead    : 1024 B
 
 =================== PEAK NUMBERS ===================
-Threads resident at once       : 221184
-Memory bandwidth               : 1555.20 GB/s
-FP32 cores per SM              : 64
-FP32 math (FMA = 2 ops)        : 19.49 TFLOPS
-FP32 ops per float loaded      : 50.13
+Threads resident at once       : 303104
+Memory bandwidth               : 7672.32 GB/s
+FP32 cores per SM              : 128
+FP32 math (FMA = 2 ops)        : 74.45 TFLOPS
+FP32 ops per float loaded      : 38.81

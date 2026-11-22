@@ -1,5 +1,6 @@
 #include "utils/cuda_utils.cuh"
 #include <cstddef>
+#include <chrono>
 #include <cstdlib>
 
 #define BLOCK_SIZE 32
@@ -20,7 +21,7 @@ int main(){
     const int M = 4096;
     const int K = 4096;
     const int N = 4096;
-    const double a100_peak_tflops = 19.49;
+    const double peak_tflops = cuda_utils::fp32_peak_tflops();
 
     size_t size_A = (size_t)M * K * sizeof(float);
     size_t size_B = (size_t)K * N * sizeof(float);
@@ -43,11 +44,12 @@ int main(){
     dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE, 1);
     dim3 gridDim(cuda_utils::ceil_div(N, BLOCK_SIZE), cuda_utils::ceil_div(M, BLOCK_SIZE), 1);
 
-    // warmup
-    for(int i = 0; i < 5; i++){
+    // warmup: run for at least 0.5 s so the GPU clock reaches its maximum
+    auto warmup_start = std::chrono::steady_clock::now();
+    do {
         sgemm_2<<<gridDim, blockDim>>>(d_A, d_B, d_C, M, K, N);
-    }
-    CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaDeviceSynchronize());
+    } while(std::chrono::steady_clock::now() - warmup_start < std::chrono::milliseconds(500));
     CUDA_CHECK(cudaGetLastError());
 
     cudaEvent_t start, stop;
@@ -73,8 +75,8 @@ int main(){
 
     printf("average time: %f ms\n", avg_ms);
     printf("achieved compute: %f TFLOPS\n", achieved_tflops);
-    printf("theoretical max compute: %.2f TFLOPS\n", a100_peak_tflops);
-    printf("percent of peak: %.1f%%\n", 100.0 * achieved_tflops / a100_peak_tflops);
+    printf("theoretical max compute: %.2f TFLOPS\n", peak_tflops);
+    printf("percent of peak: %.1f%%\n", 100.0 * achieved_tflops / peak_tflops);
 
     CUDA_CHECK(cudaMemcpy(h_C, d_C, size_C, cudaMemcpyDeviceToHost));
 
@@ -108,11 +110,11 @@ int main(){
 }
 /*
 
-$ nvcc -O3 -arch=sm_80 cuda/sgemm_2.cu -o sgemm_2 && ./sgemm_2
-average time: 45.218102 ms
-achieved compute: 3.039468 TFLOPS
-theoretical max compute: 19.49 TFLOPS
-percent of peak: 15.6%
+$ nvcc -O3 -arch=sm_100 cuda/sgemm_2.cu -o sgemm_2 && ./sgemm_2      (B200, CUDA 13.5)
+average time: 19.534748 ms
+achieved compute: 7.035614 TFLOPS
+theoretical max compute: 74.45 TFLOPS
+percent of peak: 9.5%
 spot check: 0 of 100 wrong, max relative error 2.72e-06
 
 */

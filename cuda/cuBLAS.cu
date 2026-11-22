@@ -1,4 +1,5 @@
 #include "utils/cuda_utils.cuh"
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -9,7 +10,7 @@ int main(){
     const int M = 4096;
     const int K = 4096;
     const int N = 4096;
-    const double a100_peak_tflops = 19.49;
+    const double peak_tflops = cuda_utils::fp32_peak_tflops();
 
     size_t size_A = (size_t)M * K * sizeof(float);
     size_t size_B = (size_t)K * N * sizeof(float);
@@ -35,8 +36,10 @@ int main(){
     float alpha = 1.0f;
     float beta = 0.0f;
 
-    // warmup
-    for (int iter = 0; iter < 100; iter++) {
+    // row-major C = A * B is column-major C^T = B^T * A^T, so B goes first
+    // warmup: run for at least 0.5 s so the GPU clock reaches its maximum
+    auto warmup_start = std::chrono::steady_clock::now();
+    do {
         CUBLAS_CHECK(cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
                                  N, M, K,
                                  &alpha,
@@ -44,8 +47,8 @@ int main(){
                                  d_A, K,  // Matrix A
                                  &beta,
                                  d_C, N)); // Matrix C
-    }
-    CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaDeviceSynchronize());
+    } while(std::chrono::steady_clock::now() - warmup_start < std::chrono::milliseconds(500));
 
     cudaEvent_t start, stop;
     CUDA_CHECK(cudaEventCreate(&start));
@@ -72,8 +75,8 @@ int main(){
 
     printf("average time: %f ms\n", avg_ms);
     printf("achieved compute: %f TFLOPS\n", achieved_tflops);
-    printf("theoretical max compute: %.2f TFLOPS\n", a100_peak_tflops);
-    printf("percent of peak: %.1f%%\n", 100.0 * achieved_tflops / a100_peak_tflops);
+    printf("theoretical max compute: %.2f TFLOPS\n", peak_tflops);
+    printf("percent of peak: %.1f%%\n", 100.0 * achieved_tflops / peak_tflops);
 
     CUDA_CHECK(cudaMemcpy(h_C, d_C, size_C, cudaMemcpyDeviceToHost));
 
@@ -108,11 +111,11 @@ int main(){
 }
 /*
 
-$ nvcc -O3 -arch=sm_80 cuda/cuBLAS.cu -o cublas -lcublas && ./cublas
-average time: 7.222579 ms
-achieved compute: 19.029069 TFLOPS
-theoretical max compute: 19.49 TFLOPS
-percent of peak: 97.6%
+$ nvcc -O3 -arch=sm_100 cuda/cuBLAS.cu -o cublas -lcublas && ./cublas      (B200, CUDA 13.5)
+average time: 2.160994 ms
+achieved compute: 63.599890 TFLOPS
+theoretical max compute: 74.45 TFLOPS
+percent of peak: 85.4%
 spot check: 0 of 100 wrong, max relative error 2.72e-06
 
 */

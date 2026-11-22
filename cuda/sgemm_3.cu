@@ -1,5 +1,6 @@
 #include "utils/cuda_utils.cuh"
 #include <cstddef>
+#include <chrono>
 #include <cstdlib>
 
 #define BLOCK_SIZE 32
@@ -8,38 +9,47 @@ __global__ void sgemm_3(const float* A, const float* B, float* C, int M, int K, 
     __shared__ float s_A[BLOCK_SIZE][BLOCK_SIZE];
     __shared__ float s_B[BLOCK_SIZE][BLOCK_SIZE];
 
-    int bx = blockIdx.x;
-    int by = blockIdx.y;
     int tx = threadIdx.x;
     int ty = threadIdx.y;
 
-    int row = ty + BLOCK_SIZE * by;
-    int col = tx + BLOCK_SIZE * bx;
+    // the element of C this thread computes
+    int row = blockIdx.y * BLOCK_SIZE + ty;
+    int col = blockIdx.x * BLOCK_SIZE + tx;
 
-    float tmp = 0.0f;
+    float sum = 0.0f;
     int num_tiles = cuda_utils::ceil_div(K, BLOCK_SIZE);
 
     for(int i = 0; i < num_tiles; i++){
+        // step i: tile i of this block's strip of A (moves right) and of B (moves down).
+        // thread (tx, ty) copies element (ty, tx) of each tile.
+        // out-of-range numbers are stored as 0, so they add nothing to the sum
         if(row < M && i * BLOCK_SIZE + tx < K){
-            s_A[ty][tx] = A[tx + row * K + i * BLOCK_SIZE];
+            s_A[ty][tx] = A[row * K + (i * BLOCK_SIZE + tx)];
         }
         else{
             s_A[ty][tx] = 0.0f;
         }
-        if(col < N && i * BLOCK_SIZE + ty < K){
-            s_B[ty][tx] = B[ty * N + col + i * BLOCK_SIZE * N];
+        if(i * BLOCK_SIZE + ty < K && col < N){
+            s_B[ty][tx] = B[(i * BLOCK_SIZE + ty) * N + col];
         }
-        else {
+        else{
             s_B[ty][tx] = 0.0f;
         }
+
+        // wait until both tiles are complete before reading them
         __syncthreads();
+
+        // row ty of s_A times column tx of s_B: this tile's part of the sum
         for(int j = 0; j < BLOCK_SIZE; j++){
-            tmp += s_A[ty][j] * s_B[j][tx];
+            sum += s_A[ty][j] * s_B[j][tx];
         }
+
+        // wait until every thread is done before the next step overwrites the tiles
         __syncthreads();
     }
+
     if(row < M && col < N){
-        C[row * N + col] = tmp;
+        C[row * N + col] = sum;
     }
 }
 
@@ -47,7 +57,7 @@ int main(){
     const int M = 4096;
     const int K = 4096;
     const int N = 4096;
-    const double a100_peak_tflops = 19.49;
+    const double peak_tflops = cuda_utils::fp32_peak_tflops();
 
     size_t size_A = (size_t)M * K * sizeof(float);
     size_t size_B = (size_t)K * N * sizeof(float);
@@ -70,11 +80,12 @@ int main(){
     dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE, 1);
     dim3 gridDim(cuda_utils::ceil_div(N, BLOCK_SIZE), cuda_utils::ceil_div(M, BLOCK_SIZE), 1);
 
-    // warmup
-    for(int i = 0; i < 5; i++){
+    // warmup: run for at least 0.5 s so the GPU clock reaches its maximum
+    auto warmup_start = std::chrono::steady_clock::now();
+    do {
         sgemm_3<<<gridDim, blockDim>>>(d_A, d_B, d_C, M, K, N);
-    }
-    CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaDeviceSynchronize());
+    } while(std::chrono::steady_clock::now() - warmup_start < std::chrono::milliseconds(500));
     CUDA_CHECK(cudaGetLastError());
 
     cudaEvent_t start, stop;
@@ -100,8 +111,8 @@ int main(){
 
     printf("average time: %f ms\n", avg_ms);
     printf("achieved compute: %f TFLOPS\n", achieved_tflops);
-    printf("theoretical max compute: %.2f TFLOPS\n", a100_peak_tflops);
-    printf("percent of peak: %.1f%%\n", 100.0 * achieved_tflops / a100_peak_tflops);
+    printf("theoretical max compute: %.2f TFLOPS\n", peak_tflops);
+    printf("percent of peak: %.1f%%\n", 100.0 * achieved_tflops / peak_tflops);
 
     CUDA_CHECK(cudaMemcpy(h_C, d_C, size_C, cudaMemcpyDeviceToHost));
 
@@ -135,11 +146,11 @@ int main(){
 }
 /*
 
-$ nvcc -O3 -arch=sm_80 cuda/sgemm_3.cu -o sgemm_3 && ./sgemm_3
-average time: 25.819290 ms
-achieved compute: 5.323111 TFLOPS
-theoretical max compute: 19.49 TFLOPS
-percent of peak: 27.3%
+$ nvcc -O3 -arch=sm_100 cuda/sgemm_3.cu -o sgemm_3 && ./sgemm_3      (B200, CUDA 13.5)
+average time: 13.319811 ms
+achieved compute: 10.318386 TFLOPS
+theoretical max compute: 74.45 TFLOPS
+percent of peak: 13.9%
 spot check: 0 of 100 wrong, max relative error 2.72e-06
 
 */

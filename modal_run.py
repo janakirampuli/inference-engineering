@@ -1,10 +1,10 @@
 """Run commands from this folder on a Modal GPU. Invoke from the repo root.
 
-The default GPU is an A100 40GB, every run has a timeout (default 10 minutes), and any run whose
+The default GPU is a B200, every run has a timeout (default 10 minutes), and any run whose
 worst-case cost (running until the timeout) exceeds $2 asks for confirmation.
 
     uv run modal run modal_run.py --cmd "nvidia-smi && nvcc --version"
-    uv run modal run modal_run.py --gpu H100 --cmd "..."
+    uv run modal run modal_run.py --gpu A100 --cmd "..."
 
 Inside the container this folder is the working directory (/root) and the runs volume is mounted at
 /root/runs. Write plots, profiles and logs under runs/ to keep them.
@@ -21,7 +21,7 @@ REMOTE_ROOT = "/root"
 DEFAULT_TIMEOUT_SECONDS = 10 * 60
 CONFIRM_ABOVE_USD = 2.0
 
-CUDA_VERSION = "12.8.1"
+CUDA_VERSION = "13.5.0"
 TORCH_INDEX = "https://download.pytorch.org/whl/cu128"
 
 app = modal.App("inference-engineering")
@@ -34,7 +34,7 @@ IGNORE = [".venv", ".git", "runs", "build", "**/__pycache__", ".ruff_cache", "*.
 image = (
     modal.Image.from_registry(f"nvidia/cuda:{CUDA_VERSION}-devel-ubuntu24.04", add_python="3.12")
     .entrypoint([])
-    .apt_install("cuda-nsight-systems-12-8", "cuda-nsight-compute-12-8")
+    .apt_install("cuda-nsight-systems-13-5", "cuda-nsight-compute-13-5")
     .pip_install("torch==2.11.0", index_url=TORCH_INDEX)
     .pip_install("numpy", "matplotlib", "pandas", "ninja")
     .env({"PYTHONUNBUFFERED": "1", "PATH": "/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"})
@@ -67,7 +67,7 @@ def worst_case_cost(gpu_spec: str | None, hours: float) -> float | None:
 
 
 @app.local_entrypoint()
-def main(cmd: str, gpu: str = "A100", timeout: int = DEFAULT_TIMEOUT_SECONDS, yes: bool = False) -> None:
+def main(cmd: str, gpu: str = "B200", timeout: int = DEFAULT_TIMEOUT_SECONDS, yes: bool = False, cpu: float = 0) -> None:
     gpu_spec = None if gpu.lower() in ("", "none", "cpu") else gpu
     cost = worst_case_cost(gpu_spec, timeout / 3600)
     month = float(modal.Workspace.from_context().billing.summary().billed_cost)
@@ -83,4 +83,7 @@ def main(cmd: str, gpu: str = "A100", timeout: int = DEFAULT_TIMEOUT_SECONDS, ye
             answer = ""
         if answer.strip().lower() != "y":
             raise SystemExit("Aborted, nothing was launched.")
-    run.with_options(gpu=gpu_spec, timeout=timeout).remote(cmd)
+    options = {"gpu": gpu_spec, "timeout": timeout}
+    if cpu:
+        options["cpu"] = cpu
+    run.with_options(**options).remote(cmd)
